@@ -100,6 +100,7 @@ func worker(id int32) {
 
 		req.Header.Add("Range", fmt.Sprintf("bytes=%d-%d",
 			testBlockStartPos, testBlockEndPos))
+		startTime := time.Now()
 		resp, respErr := client.Do(req)
 		if respErr != nil {
 			log.WithFields(log.Fields{
@@ -154,6 +155,7 @@ func worker(id int32) {
 				"error":                     ioErr.Error(),
 			}).Errorln("Failed to write data file")
 		} else {
+			timeUsedSecond := float64(time.Since(startTime).Nanoseconds()) / 1000000000.0
 			log.WithFields(log.Fields{
 				"worker": id,
 				"pass":   pass,
@@ -161,6 +163,8 @@ func worker(id int32) {
 				"test_block_size_mega_byte": testBlockSizeMegaByte,
 				"range":                     req.Header.Get("Range"),
 				"write_size":                n,
+				"time_used_second":          timeUsedSecond,
+				"average_speed":             fmt.Sprintf("%.2f KiB/s", float64(n)/timeUsedSecond/1024.0),
 			}).Debugln("Done")
 		}
 	}
