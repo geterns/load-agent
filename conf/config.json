@@ -1,0 +1,15 @@
+{
+    "url_root": "http://10.94.39.55:8899/file",
+    "url_para": "sdk_id=258&origin=1&task_id=1&xcode=419022163afcfb1f9fa1ca13e662351ad8a6f30f8b29450f0b2977702d3e6764",
+
+    "data_dir": "../data/",
+
+    "request_per_routine": 10,
+    "routine_number": 100,
+
+    "min_file_size_10_mega_byte": 10,
+    "max_file_size_10_mega_byte": 307,
+
+    "min_test_block_size_mega_byte": 1,
+    "max_test_block_size_mega_byte": 16
+}
