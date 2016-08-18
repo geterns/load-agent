@@ -9,8 +9,10 @@ type Config struct {
 	UrlRoot string `json:"url_root"`
 	UrlPara string `json:"url_para"`
 
-	RequestPerRoutine int32 `json:"request_per_routine"`
-	RoutineNumber     int32 `json:"routine_number"`
+	RequestPerRoutine      int32 `json:"request_per_routine"`
+	LoadAgentWorkerNumber  int32 `json:"load_agent_worker_number"`
+	CacheAgentWorkerNumber int32 `json:"cache_agent_worker_number"`
+	CacheAgentMaxAttempt   int32 `json:"cache_agent_max_attempt"`
 
 	MinFileSizeTenMegaByte int64 `json:"min_file_size_10_mega_byte"`
 	MaxFileSizeTenMegaByte int64 `json:"max_file_size_10_mega_byte"`

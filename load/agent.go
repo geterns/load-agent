@@ -37,7 +37,7 @@ func signalHandler() {
 func init() {
 	// parse command line arguments
 	confFile := flag.String("conf", "../conf/config.json", "config file")
-	logFile := flag.String("log", "../logs/massive_down.log", "log file")
+	logFile := flag.String("log", "../logs/load-agent.log", "log file")
 	flag.Parse()
 	// open log file
 	log.SetOutput(&logadpt.FileRotator{
@@ -172,10 +172,10 @@ func worker(id int32) {
 
 func main() {
 	log.Infoln("Start test, config = ", cfgIns)
-	for id := int32(0); id < cfgIns.RoutineNumber; id++ {
+	for id := int32(0); id < cfgIns.LoadAgentWorkerNumber; id++ {
 		go worker(id)
 	}
-	for id := int32(0); id < cfgIns.RoutineNumber; id++ {
+	for id := int32(0); id < cfgIns.LoadAgentWorkerNumber; id++ {
 		<-done
 	}
 }

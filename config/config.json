@@ -3,7 +3,9 @@
     "url_para": "sdk_id=258&origin=1&task_id=1&xcode=fde464b59c32924140e8180424fb6b71b59585fca6dceb04&business_id=4097",
 
     "request_per_routine": 100,
-    "routine_number": 1000,
+    "load_agent_worker_number": 1000,
+    "cache_agent_worker_number": 10,
+    "cache_agent_max_attempt": 10,
 
     "min_file_size_10_mega_byte": 10,
     "max_file_size_10_mega_byte": 50,

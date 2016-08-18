@@ -22,6 +22,7 @@ var (
 	// config instance
 	cfgIns config.Config
 
+	jobs = make(chan int64, 64)
 	done = make(chan bool)
 )
 
@@ -37,7 +38,7 @@ func signalHandler() {
 func init() {
 	// parse command line arguments
 	confFile := flag.String("conf", "../conf/config.json", "config file")
-	logFile := flag.String("log", "../logs/massive_cache.log", "log file")
+	logFile := flag.String("log", "../logs/cache-agent.log", "log file")
 	flag.Parse()
 	// open log file
 	log.SetOutput(&logadpt.FileRotator{
@@ -65,76 +66,89 @@ func init() {
 	go signalHandler()
 }
 
-func worker(id int64) {
+func worker(id int32) {
 	client := &http.Client{}
 	for {
+		fileSizeTenMegaByte, ok := <-jobs
+
+		if !ok {
+			log.WithFields(log.Fields{
+				"worker": id,
+			}).Infoln("Worker terminate")
+		}
+
 		// Set file
-		fileSizeMegaByte := id * 10
-		url := fmt.Sprintf("%s/%dM?%s", cfgIns.UrlRoot, fileSizeMegaByte, cfgIns.UrlPara)
+		url := fmt.Sprintf("%s/%dM?%s", cfgIns.UrlRoot, fileSizeTenMegaByte*10, cfgIns.UrlPara)
 
-		req, reqErr := http.NewRequest("GET", url, nil)
-		if reqErr != nil {
-			log.WithFields(log.Fields{
-				"worker": id,
-				"url":    url,
-				"error":  reqErr.Error(),
-			}).Errorln("Failed to make HTTP request")
-			continue
-		}
+		for attempt := int32(1); attempt <= cfgIns.CacheAgentMaxAttempt; attempt++ {
+			req, reqErr := http.NewRequest("GET", url, nil)
+			if reqErr != nil {
+				log.WithFields(log.Fields{
+					"worker": id,
+					"url":    url,
+					"error":  reqErr.Error(),
+				}).Errorln("Failed to make HTTP request")
+				continue
+			}
 
-		// Send request
-		startTime := time.Now()
-		resp, respErr := client.Do(req)
-		if respErr != nil {
-			log.WithFields(log.Fields{
-				"worker": id,
-				"url":    url,
-				"range":  req.Header.Get("Range"),
-				"error":  respErr.Error(),
-			}).Errorln("Failed to do HTTP request")
-			continue
-		}
-		defer resp.Body.Close()
+			// Send request
+			startTime := time.Now()
+			resp, respErr := client.Do(req)
+			if respErr != nil {
+				log.WithFields(log.Fields{
+					"worker":  id,
+					"url":     url,
+					"attempt": attempt,
+					"error":   respErr.Error(),
+				}).Errorln("Failed to do HTTP request")
+				continue
+			}
+			defer resp.Body.Close()
 
-		if resp.StatusCode != 200 && resp.StatusCode != 206 {
-			log.WithFields(log.Fields{
-				"worker":      id,
-				"url":         url,
-				"range":       req.Header.Get("Range"),
-				"status_code": resp.StatusCode,
-			}).Errorln("Request failed")
-			continue
-		}
+			if resp.StatusCode != 200 {
+				log.WithFields(log.Fields{
+					"worker":      id,
+					"url":         url,
+					"attempt":     attempt,
+					"status_code": resp.StatusCode,
+				}).Errorln("Request failed")
+				continue
+			}
 
-		// Read response, calculate duration
-		requestCompleteTime := time.Now()
-		out := dummy.DummyWriter{new(bool), new(time.Time), new(time.Time), new(time.Duration)}
+			// Read response, calculate duration
+			requestCompleteTime := time.Now()
+			out := dummy.DummyWriter{new(bool), new(time.Time), new(time.Time), new(time.Duration)}
 
-		if n, ioErr := io.Copy(out, resp.Body); ioErr != nil {
-			log.WithFields(log.Fields{
-				"worker": id,
-				"url":    url,
-				"range":  req.Header.Get("Range"),
-				"error":  ioErr.Error(),
-			}).Errorln("Failed to write data file")
-		} else {
-			requestTimeMSecond := float64(requestCompleteTime.Sub(startTime).Nanoseconds()) / 1000000.0
-			firstByteArrivalTimeMSecond :=
-				float64(out.FirstByteArrivalTime.Sub(startTime).Nanoseconds()) / 1000000.0
-			maxWaitTimeMSecond := float64(out.MaxWaitDuration.Nanoseconds()) / 1000000.0
-			timeUsedSecond := float64(time.Since(requestCompleteTime).Nanoseconds()) / 1000000000.0
-			log.WithFields(log.Fields{
-				"worker":                          id,
-				"url":                             url,
-				"write_size":                      n,
-				"requestTimeMSecond":              requestTimeMSecond,
-				"first_byte_arrival_time_msecond": firstByteArrivalTimeMSecond,
-				"max_wait_duration_msecond":       maxWaitTimeMSecond,
-				"time_used_second":                timeUsedSecond,
-				"average_speed":                   fmt.Sprintf("%.2f KiB/s", float64(n)/timeUsedSecond/1024.0),
-			}).Debugln("Done")
+			if n, ioErr := io.Copy(out, resp.Body); ioErr != nil {
+				log.WithFields(log.Fields{
+					"worker":  id,
+					"url":     url,
+					"attempt": attempt,
+					"error":   ioErr.Error(),
+				}).Errorln("Failed to write data file")
+			} else {
+				requestTimeMSecond :=
+					float64(requestCompleteTime.Sub(startTime).Nanoseconds()) / 1000000.0
+				firstByteArrivalTimeMSecond :=
+					float64(out.FirstByteArrivalTime.Sub(startTime).Nanoseconds()) / 1000000.0
+				maxWaitTimeMSecond :=
+					float64(out.MaxWaitDuration.Nanoseconds()) / 1000000.0
+				timeUsedSecond :=
+					float64(time.Since(requestCompleteTime).Nanoseconds()) / 1000000000.0
+				log.WithFields(log.Fields{
+					"worker":                          id,
+					"url":                             url,
+					"attempt":                         attempt,
+					"write_size":                      n,
+					"requestTimeMSecond":              requestTimeMSecond,
+					"first_byte_arrival_time_msecond": firstByteArrivalTimeMSecond,
+					"max_wait_duration_msecond":       maxWaitTimeMSecond,
+					"time_used_second":                timeUsedSecond,
+					"average_speed":                   fmt.Sprintf("%.2f KiB/s", float64(n)/timeUsedSecond/1024.0),
+				}).Debugln("Done")
 
-			break
+				break
+			}
 		}
 	}
 
@@ -142,13 +156,19 @@ func worker(id int64) {
 }
 
 func main() {
-	log.Infoln("Start test, config = ", cfgIns)
+	log.Infoln("Start cache-agent, config = ", cfgIns)
 
-	for id := cfgIns.MinFileSizeTenMegaByte; id <= cfgIns.MaxFileSizeTenMegaByte; id++ {
+	for id := int32(0); id < cfgIns.CacheAgentWorkerNumber; id++ {
 		go worker(id)
 	}
 
-	for id := cfgIns.MinFileSizeTenMegaByte; id <= cfgIns.MaxFileSizeTenMegaByte; id++ {
+	for job := cfgIns.MinFileSizeTenMegaByte; job <= cfgIns.MaxFileSizeTenMegaByte; job++ {
+		jobs <- job
+	}
+
+	close(jobs)
+
+	for id := int32(0); id < cfgIns.CacheAgentWorkerNumber; id++ {
 		<-done
 	}
 }
